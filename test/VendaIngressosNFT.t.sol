@@ -10,17 +10,17 @@ contract VendaIngressosNFTTest is Test {
     VendaIngressosNFT public contrato;
     address public organizador;
     address public comprador;
+    address public revendedor;
 
     function setUp() public {
         organizador = address(this);
         comprador = address(2);
+        revendedor = address(3);
 
-        vm.prank(organizador);
         contrato = new VendaIngressosNFT();
     }
 
     function testCriarEventoAberto() public {
-        vm.prank(organizador);
         contrato.criarEvento("Intermed", 1 ether, 100, VendaIngressosNFT.TipoVenda.Aberta);
 
         (
@@ -41,7 +41,6 @@ contract VendaIngressosNFTTest is Test {
     }
 
     function testComprarIngressoAberto() public {
-        vm.prank(organizador);
         contrato.criarEvento("Intermed", 1 ether, 100, VendaIngressosNFT.TipoVenda.Aberta);
 
         vm.deal(comprador, 2 ether);
@@ -52,11 +51,23 @@ contract VendaIngressosNFTTest is Test {
         assertEq(contrato.tokenURI(1), "ipfs://ingresso1");
     }
 
-    function testComprarIngressoPorConvite() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Privado", 0.5 ether, 10, VendaIngressosNFT.TipoVenda.PorConvite);
+    function testNaoCompraQuandoEsgotado() public {
+    contrato.criarEvento("Esgotado", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
 
-        vm.prank(organizador);
+    vm.deal(comprador, 2 ether);
+    vm.prank(comprador);
+    contrato.comprarIngresso{value: 1 ether}(1, "ipfs://1");
+
+    address outroComprador = address(5);
+    vm.deal(outroComprador, 1 ether);
+    vm.prank(outroComprador);
+    vm.expectRevert("Ingressos esgotados");
+    contrato.comprarIngresso{value: 1 ether}(1, "ipfs://2");
+}
+
+
+    function testComprarIngressoPorConvite() public {
+        contrato.criarEvento("Privado", 0.5 ether, 10, VendaIngressosNFT.TipoVenda.PorConvite);
         contrato.adicionarConvidado(1, comprador);
 
         vm.deal(comprador, 1 ether);
@@ -68,7 +79,6 @@ contract VendaIngressosNFTTest is Test {
     }
 
     function testNaoPodeComprarSemConvite() public {
-        vm.prank(organizador);
         contrato.criarEvento("Privado", 1 ether, 10, VendaIngressosNFT.TipoVenda.PorConvite);
 
         vm.deal(comprador, 1 ether);
@@ -77,21 +87,74 @@ contract VendaIngressosNFTTest is Test {
         contrato.comprarIngresso{value: 1 ether}(1, "ipfs://naoautorizado");
     }
 
+    function testRevenderIngresso() public {
+        contrato.criarEvento("Revenda", 1 ether, 10, VendaIngressosNFT.TipoVenda.Aberta);
+
+        vm.deal(comprador, 1 ether);
+        vm.prank(comprador);
+        contrato.comprarIngresso{value: 1 ether}(1, "ipfs://revenda");
+
+        vm.prank(comprador);
+        contrato.revenderIngresso(1, revendedor);
+
+        assertEq(contrato.ownerOf(1), revendedor);
+    }
+
+    function testRepassarIngressosParaRevendedor() public {
+        contrato.criarEvento("Lote", 1 ether, 100, VendaIngressosNFT.TipoVenda.Aberta);
+        contrato.repassarIngressos(1, revendedor, 10);
+
+        (, , , , uint vendidos, ) = contrato.obterDadosEvento(1);
+        assertEq(vendidos, 10);
+    }
+
+    function testRevendedorEmiteIngresso() public {
+        contrato.criarEvento("RevendaDireta", 1 ether, 10, VendaIngressosNFT.TipoVenda.Aberta);
+        contrato.repassarIngressos(1, revendedor, 3);
+
+        vm.prank(revendedor);
+        contrato.venderComoRevendedor(1, "ipfs://revendido1");
+
+        assertEq(contrato.balanceOf(revendedor), 1);
+        assertEq(contrato.tokenURI(1), "ipfs://revendido1");
+    }
+
+    function testUsuarioNaoPodeRevenderSemRepassar() public {
+    contrato.criarEvento("Protegido", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
+
+    vm.prank(comprador);
+    vm.expectRevert("Sem ingressos disponiveis para revenda");
+    contrato.venderComoRevendedor(1, "ipfs://semAutorizacao");
+}
+
+
+    function testRevendedorLimite() public {
+    contrato.criarEvento("Limite", 1 ether, 2, VendaIngressosNFT.TipoVenda.Aberta);
+    contrato.repassarIngressos(1, revendedor, 1);
+
+    vm.prank(revendedor);
+    contrato.venderComoRevendedor(1, "ipfs://ok");
+
+    vm.prank(revendedor);
+    vm.expectRevert("Sem ingressos disponiveis para revenda");
+    contrato.venderComoRevendedor(1, "ipfs://excesso");
+}
+
+
     function testSacarFundos() public {
-        vm.prank(organizador);
         contrato.criarEvento("Pago", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
 
         vm.deal(comprador, 1 ether);
         vm.prank(comprador);
         contrato.comprarIngresso{value: 1 ether}(1, "ipfs://ticket");
 
-        // Simula conta receptora com contrato para receber ETH
-        address payable receiver = payable(address(this));
-        vm.prank(organizador);
+        uint saldoAntes = address(this).balance;
+
         contrato.sacarFundos(1);
 
-        // Confirma que o saldo do contrato foi zerado
-        assertEq(address(contrato).balance, 0);
+        uint saldoDepois = address(this).balance;
+        assertGt(saldoDepois, saldoAntes);
     }
+
     receive() external payable {}
 }

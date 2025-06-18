@@ -17,6 +17,7 @@ contract VendaIngressosNFT is ERC721URIStorage, Ownable {
         uint vendidos;
         TipoVenda tipo;
         mapping(address => bool) convidados;
+        mapping(address => uint) revendedores; // autorizados com quantidade
     }
 
     uint public proximoIdEvento = 1;
@@ -25,6 +26,8 @@ contract VendaIngressosNFT is ERC721URIStorage, Ownable {
 
     event EventoCriado(uint idEvento, string nome, address organizador);
     event IngressoComprado(uint idEvento, address comprador, uint tokenId);
+    event IngressosRepasados(uint idEvento, address para, uint quantidade);
+    event IngressoRevendido(uint tokenId, address de, address para);
 
     constructor() ERC721("IngressoNFT", "ING") Ownable(msg.sender) {}
 
@@ -77,6 +80,45 @@ contract VendaIngressosNFT is ERC721URIStorage, Ownable {
 
         emit IngressoComprado(_idEvento, msg.sender, tokenId);
     }
+
+    function revenderIngresso(uint tokenId, address para) external {
+        require(ownerOf(tokenId) == msg.sender, "Voce nao possui este ingresso");
+        _transfer(msg.sender, para, tokenId);
+        emit IngressoRevendido(tokenId, msg.sender, para);
+    }
+
+    function repassarIngressos(uint _idEvento, address para, uint quantidade) external {
+        Evento storage evento = eventos[_idEvento];
+        require(msg.sender == evento.organizador, "Apenas o organizador pode repassar");
+        require(evento.vendidos + quantidade <= evento.totalIngressos, "Nao ha ingressos suficientes");
+
+        evento.revendedores[para] += quantidade;
+        evento.vendidos += quantidade;
+
+        emit IngressosRepasados(_idEvento, para, quantidade);
+    }
+
+    function retirarRevendedor(uint _idEvento, address revendedor) external {
+        Evento storage evento = eventos[_idEvento];
+        require(msg.sender == evento.organizador, "Apenas o organizador pode remover");
+        evento.revendedores[revendedor] = 0;
+    }
+
+    function venderComoRevendedor(uint _idEvento, string memory tokenURI) external {
+        Evento storage evento = eventos[_idEvento];
+        require(evento.revendedores[msg.sender] > 0, "Sem ingressos disponiveis para revenda");
+
+        uint tokenId = proximoIdIngresso;
+        _safeMint(msg.sender, tokenId);
+        _setTokenURI(tokenId, tokenURI);
+
+        ingressoParaEvento[tokenId] = _idEvento;
+        evento.revendedores[msg.sender]--;
+        proximoIdIngresso++;
+
+        emit IngressoComprado(_idEvento, msg.sender, tokenId);
+    }
+
 
     function sacarFundos(uint _idEvento) external {
         Evento storage evento = eventos[_idEvento];

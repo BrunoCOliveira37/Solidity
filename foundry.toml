@@ -2,6 +2,7 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+dotenv = ".env"
 
 
 

@@ -1,14 +1,29 @@
-# Compiler files
-cache/
+# node_modules (React e Vite)
+node_modules/
+
+# Build do Vite
+dist/
+.vite/
+
+# Arquivos do Foundry
 out/
+cache/
+artifacts/
+broadcast/
+forge-artifacts/
 
-# Ignores development broadcast logs
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
-
-# Docs
-docs/
-
-# Dotenv file
+# Arquivos de ambiente
 .env
+.env.local
+.env.*.local
+
+# Sistema e IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Outros
+coverage/
