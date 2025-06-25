@@ -26,9 +26,9 @@ contract VendaIngressosNFTTest is Test {
         (
             string memory nome,
             address dono,
-            uint preco,
-            uint total,
-            uint vendidos,
+            uint256 preco,
+            uint256 total,
+            uint256 vendidos,
             VendaIngressosNFT.TipoVenda tipoVenda
         ) = contrato.obterDadosEvento(1);
 
@@ -37,7 +37,7 @@ contract VendaIngressosNFTTest is Test {
         assertEq(preco, 1 ether);
         assertEq(total, 100);
         assertEq(vendidos, 0);
-        assertEq(uint(tipoVenda), uint(VendaIngressosNFT.TipoVenda.Aberta));
+        assertEq(uint256(tipoVenda), uint256(VendaIngressosNFT.TipoVenda.Aberta));
     }
 
     function testComprarIngressoAberto() public {
@@ -52,19 +52,18 @@ contract VendaIngressosNFTTest is Test {
     }
 
     function testNaoCompraQuandoEsgotado() public {
-    contrato.criarEvento("Esgotado", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
+        contrato.criarEvento("Esgotado", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
 
-    vm.deal(comprador, 2 ether);
-    vm.prank(comprador);
-    contrato.comprarIngresso{value: 1 ether}(1, "ipfs://1");
+        vm.deal(comprador, 2 ether);
+        vm.prank(comprador);
+        contrato.comprarIngresso{value: 1 ether}(1, "ipfs://1");
 
-    address outroComprador = address(5);
-    vm.deal(outroComprador, 1 ether);
-    vm.prank(outroComprador);
-    vm.expectRevert("Ingressos esgotados");
-    contrato.comprarIngresso{value: 1 ether}(1, "ipfs://2");
-}
-
+        address outroComprador = address(5);
+        vm.deal(outroComprador, 1 ether);
+        vm.prank(outroComprador);
+        vm.expectRevert("Ingressos esgotados");
+        contrato.comprarIngresso{value: 1 ether}(1, "ipfs://2");
+    }
 
     function testComprarIngressoPorConvite() public {
         contrato.criarEvento("Privado", 0.5 ether, 10, VendaIngressosNFT.TipoVenda.PorConvite);
@@ -104,7 +103,7 @@ contract VendaIngressosNFTTest is Test {
         contrato.criarEvento("Lote", 1 ether, 100, VendaIngressosNFT.TipoVenda.Aberta);
         contrato.repassarIngressos(1, revendedor, 10);
 
-        (, , , , uint vendidos, ) = contrato.obterDadosEvento(1);
+        (,,,, uint256 vendidos,) = contrato.obterDadosEvento(1);
         assertEq(vendidos, 10);
     }
 
@@ -120,26 +119,24 @@ contract VendaIngressosNFTTest is Test {
     }
 
     function testUsuarioNaoPodeRevenderSemRepassar() public {
-    contrato.criarEvento("Protegido", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
+        contrato.criarEvento("Protegido", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
 
-    vm.prank(comprador);
-    vm.expectRevert("Sem ingressos disponiveis para revenda");
-    contrato.venderComoRevendedor(1, "ipfs://semAutorizacao");
-}
-
+        vm.prank(comprador);
+        vm.expectRevert("Sem ingressos disponiveis para revenda");
+        contrato.venderComoRevendedor(1, "ipfs://semAutorizacao");
+    }
 
     function testRevendedorLimite() public {
-    contrato.criarEvento("Limite", 1 ether, 2, VendaIngressosNFT.TipoVenda.Aberta);
-    contrato.repassarIngressos(1, revendedor, 1);
+        contrato.criarEvento("Limite", 1 ether, 2, VendaIngressosNFT.TipoVenda.Aberta);
+        contrato.repassarIngressos(1, revendedor, 1);
 
-    vm.prank(revendedor);
-    contrato.venderComoRevendedor(1, "ipfs://ok");
+        vm.prank(revendedor);
+        contrato.venderComoRevendedor(1, "ipfs://ok");
 
-    vm.prank(revendedor);
-    vm.expectRevert("Sem ingressos disponiveis para revenda");
-    contrato.venderComoRevendedor(1, "ipfs://excesso");
-}
-
+        vm.prank(revendedor);
+        vm.expectRevert("Sem ingressos disponiveis para revenda");
+        contrato.venderComoRevendedor(1, "ipfs://excesso");
+    }
 
     function testSacarFundos() public {
         contrato.criarEvento("Pago", 1 ether, 1, VendaIngressosNFT.TipoVenda.Aberta);
@@ -148,11 +145,11 @@ contract VendaIngressosNFTTest is Test {
         vm.prank(comprador);
         contrato.comprarIngresso{value: 1 ether}(1, "ipfs://ticket");
 
-        uint saldoAntes = address(this).balance;
+        uint256 saldoAntes = address(this).balance;
 
         contrato.sacarFundos(1);
 
-        uint saldoDepois = address(this).balance;
+        uint256 saldoDepois = address(this).balance;
         assertGt(saldoDepois, saldoAntes);
     }
 
