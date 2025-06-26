@@ -36,12 +36,7 @@ contract VendaIngressosNFT is ERC721URIStorage, Ownable {
 
     constructor() ERC721("IngressoNFT", "ING") Ownable(msg.sender) {}
 
-    function criarEvento(
-        string memory _nome,
-        uint256 _preco,
-        uint256 _totalIngressos,
-        TipoVenda _tipo
-    ) external {
+    function criarEvento(string memory _nome, uint256 _preco, uint256 _totalIngressos, TipoVenda _tipo) external {
         uint256 idEvento = proximoIdEvento;
         Evento storage novo = eventos[idEvento];
         novo.nome = _nome;
