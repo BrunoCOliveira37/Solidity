@@ -1,30 +1,41 @@
-import { WagmiConfig, createConfig, http } from 'wagmi'
-import { foundry } from 'viem/chains'
+import { WagmiConfig, createConfig, http } from 'wagmi';
+import { foundry } from 'viem/chains';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'; // 👈 importa isso
+import { injected } from '@wagmi/connectors';
 import HomePage from "./pages/HomePage";
 import OrganizadorPage from "./pages/OrganizadorPage";
 import CompradorPage from "./pages/CompradorPage";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Navbar from "./components/ui/navbar";
 
+// 👇 cria o QueryClient
+const queryClient = new QueryClient();
+
+// 🦊 define o connector da metamask
 const config = createConfig({
+  connectors: [injected()],
   chains: [foundry],
-  connectors: [], // Nenhum conector real (como MetaMask)
   transports: {
-    [foundry.id]: http() // conecta no anvil (http://localhost:8545)
-  }
-})
-
-export const SIMULATED_ADDRESS = "0x0000000000000000000000000000000000000001";
+    [foundry.id]: http("http://localhost:8555"),
+  },
+});
 
 function App() {
   return (
     <WagmiConfig config={config}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/organizador" element={<OrganizadorPage />} />
-          <Route path="/comprador" element={<CompradorPage address={SIMULATED_ADDRESS} />} />
-        </Routes>
-      </BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Navbar />
+            <div className="pt-20"> {/* Empurra o conteúdo para baixo da navbar */}
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/organizador" element={<OrganizadorPage />} />
+                <Route path="/comprador" element={<CompradorPage />} />
+              </Routes>
+          </div>
+          
+        </BrowserRouter>
+      </QueryClientProvider>
     </WagmiConfig>
   );
 }

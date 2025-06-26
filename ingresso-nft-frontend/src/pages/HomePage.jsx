@@ -1,9 +1,26 @@
+import { useConnect } from "wagmi";
+import { injected } from "@wagmi/connectors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function HomePage() {
+  const { connect, connectors, isPending } = useConnect();
+
+  const handleConnect = async () => {
+    const injectedConnector = connectors.find(c => c.id === "injected");
+    if (injectedConnector) {
+      try {
+        await connect({ connector: injectedConnector });
+        alert("Carteira conectada com sucesso!");
+      } catch (err) {
+        console.error(err);
+        alert("Erro ao conectar carteira.");
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-gray-50">
       <h1 className="text-4xl font-bold mb-6 text-center text-gray-800">
@@ -12,6 +29,10 @@ export default function HomePage() {
       <p className="text-lg text-center mb-10 max-w-xl text-gray-600">
         Gerencie, venda, compre e revenda ingressos baseados em tokens NFT. Explore as funcionalidades como organizador, comprador ou revendedor.
       </p>
+
+      <Button onClick={handleConnect} className="mb-8">
+        Conectar Carteira com MetaMask
+      </Button>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
         <Card className="hover:shadow-xl transition-all">

@@ -3,8 +3,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { parseEther } from "viem";
 import { Card, CardContent } from "@/components/ui/card";
+import { useWriteContract } from "wagmi";
+import { useAccount } from "wagmi";
+import {abi} from "@/abi/VendaIngressosNFT.json";
+
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
 
 export default function OrganizadorPage() {
+  const { address, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+
   const [evento, setEvento] = useState({ nome: "", preco: "", total: "", tipo: "Aberta" });
   const [convidado, setConvidado] = useState("");
   const [eventoIdParaConvidado, setEventoIdParaConvidado] = useState("");
@@ -13,21 +21,73 @@ export default function OrganizadorPage() {
   const [eventoIdRepassar, setEventoIdRepassar] = useState("");
   const [eventoIdSaque, setEventoIdSaque] = useState("");
 
-  const handleCriarEvento = () => {
-    // Chamada para o contrato aqui (ex: wagmi writeContract)
-    console.log("Criar evento:", evento);
+  const handleCriarEvento = async () => {
+    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
+    try {
+      await writeContractAsync({
+        abi,
+        address: CONTRACT_ADDRESS,
+        functionName: "criarEvento",
+        args: [
+          evento.nome,
+          parseEther(evento.preco),
+          BigInt(evento.total),
+          evento.tipo === "Aberta" ? 0 : 1,
+        ],
+      });
+      alert("Evento criado com sucesso!");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao criar evento");
+    }
   };
 
-  const handleAdicionarConvidado = () => {
-    console.log("Adicionar convidado:", convidado, "para evento:", eventoIdParaConvidado);
+  const handleAdicionarConvidado = async () => {
+    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
+    try {
+      await writeContractAsync({
+        abi,
+        address: CONTRACT_ADDRESS,
+        functionName: "adicionarConvidado",
+        args: [BigInt(eventoIdParaConvidado), convidado],
+      });
+      alert("Convidado adicionado com sucesso!");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao adicionar convidado");
+    }
   };
 
-  const handleRepassarIngressos = () => {
-    console.log("Repassar para:", revendedor, qtdRevendedor, "evento:", eventoIdRepassar);
+  const handleRepassarIngressos = async () => {
+    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
+    try {
+      await writeContractAsync({
+        abi,
+        address: CONTRACT_ADDRESS,
+        functionName: "repassarIngressos",
+        args: [BigInt(eventoIdRepassar), revendedor, BigInt(qtdRevendedor)],
+      });
+      alert("Ingressos repassados!");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao repassar ingressos");
+    }
   };
 
-  const handleSaque = () => {
-    console.log("Sacar fundos do evento:", eventoIdSaque);
+  const handleSaque = async () => {
+    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
+    try {
+      await writeContractAsync({
+        abi,
+        address: CONTRACT_ADDRESS,
+        functionName: "sacarFundos",
+        args: [BigInt(eventoIdSaque)],
+      });
+      alert("Fundos sacados!");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao sacar fundos");
+    }
   };
 
   return (

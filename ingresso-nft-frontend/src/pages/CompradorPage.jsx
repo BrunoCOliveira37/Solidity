@@ -1,102 +1,126 @@
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { readContract } from '@wagmi/core';
-import contratoAbi from "../abi/VendaIngressosNFT.json";
+import { parseEther } from "viem";
+import { useAccount, useWriteContract } from "wagmi";
+import { readContract } from "wagmi/actions";
+import {abi} from "@/abi/VendaIngressosNFT.json";
+import axios from "axios";
 
-const contratoAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
 
-export default function CompradorPage({ address }) {
-  const [eventos, setEventos] = useState([]);
-  const [tokenURIs, setTokenURIs] = useState({});
+export default function CompradorPage() {
+  const { address, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+  const [eventoId, setEventoId] = useState("");
+  const [preco, setPreco] = useState("");
+  const [tokenURI, setTokenURI] = useState("");
+  const [isGuest, setIsGuest] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchEventos = async () => {
-      try {
-        const total = await readContract({
-          address: contratoAddress,
-          abi: contratoAbi,
-          functionName: 'proximoIdEvento'
-        });
+  if (!isConnected) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <p className="text-center text-red-600 font-semibold">
+          Conecte sua carteira MetaMask para acessar esta página.
+        </p>
+      </div>
+    );
+  }
 
-        const lista = [];
-        for (let i = 1n; i < total; i++) {
-          const dados = await readContract({
-            address: contratoAddress,
-            abi: contratoAbi,
-            functionName: 'obterDadosEvento',
-            args: [i]
-          });
+  const checarConvidado = async () => {
+    try {
+      const resultado = await readContract({
+        abi,
+        address: CONTRACT_ADDRESS,
+        functionName: "estaConvidado",
+        args: [BigInt(eventoId), address],
+      });
+      setIsGuest(resultado);
+    } catch (error) {
+      console.error("Erro ao verificar convite:", error);
+      alert("Erro ao verificar convite");
+    }
+  };
 
-          const convidado = await readContract({
-            address: contratoAddress,
-            abi: contratoAbi,
-            functionName: 'estaConvidado',
-            args: [i, address]
-          });
+  const gerarQRCode = async () => {
+  try {
+    const timestamp = Date.now(); // Adiciona timestamp (usado na assinatura)
 
-          lista.push({
-            id: Number(i),
-            nome: dados[0],
-            organizador: dados[1],
-            preco: (Number(dados[2]) / 1e18).toFixed(4),
-            total: Number(dados[3]),
-            vendidos: Number(dados[4]),
-            tipo: dados[5] === 0 ? 'Aberta' : 'PorConvite',
-            convidado
-          });
-        }
+    const response = await axios.post("http://localhost:4000/gerar-qrcode", {
+      publicKey: address,
+      evento: eventoId,
+      tipo: isGuest ? "convidado" : "aberta",
+      timestamp, // apenas adiciona o timestamp, o backend assina
+    });
 
-        setEventos(lista);
-      } catch (error) {
-        console.error("Erro ao carregar eventos:", error);
-      }
-    };
+    return response.data.qrCodeUrl;
 
-    if (address) fetchEventos();
-  }, [address]);
+  } catch (error) {
+    console.error("Erro ao gerar QR Code:", error);
+    alert("Erro ao gerar QR Code");
+    return null;
+  }
+};
 
-  const handleComprar = (eventoId) => {
-    const uri = tokenURIs[eventoId] || "ipfs://exemplo-token";
-    console.log("Comprar ingresso do evento:", eventoId, "com tokenURI:", uri);
-    // Aqui entraria a lógica com writeContract()
+
+  const handleComprarIngresso = async () => {
+    setLoading(true);
+    try {
+      const uri = await gerarQRCode();
+      if (!uri) return;
+
+      await writeContractAsync({
+        abi,
+        address: CONTRACT_ADDRESS,
+        functionName: "comprarIngresso",
+        args: [BigInt(eventoId)],
+        value: parseEther(preco),
+      });
+
+      setTokenURI(uri);
+    } catch (error) {
+      console.error("Erro na compra:", error);
+      alert("Erro ao comprar ingresso");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8">
-      <h1 className="text-3xl font-bold text-center">Comprar Ingressos</h1>
-      {eventos.map((evento) => {
-        const podeComprar = evento.tipo === "Aberta" || evento.convidado;
+    <div className="max-w-2xl mx-auto p-6 space-y-10">
+      <h1 className="text-3xl font-bold text-center">Área do Comprador</h1>
 
-        return (
-          <Card key={evento.id} className={`${podeComprar ? "" : "opacity-50 pointer-events-none"}`}>
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">{evento.nome}</h2>
-                <span className="text-sm text-gray-500">
-                  {evento.tipo === "Aberta"
-                    ? "Evento Aberto"
-                    : evento.convidado
-                    ? "Evento Fechado — Você foi convidado"
-                    : "Evento Fechado"}
-                </span>
-              </div>
-              <p className="text-gray-600">Preço: {evento.preco} ETH</p>
-              <Input
-                placeholder="tokenURI (opcional)"
-                value={tokenURIs[evento.id] || ""}
-                onChange={(e) =>
-                  setTokenURIs({ ...tokenURIs, [evento.id]: e.target.value })
-                }
-              />
-              {podeComprar && (
-                <Button onClick={() => handleComprar(evento.id)}>Comprar</Button>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h2 className="text-xl font-semibold">Comprar Ingresso</h2>
+          <Input
+            placeholder="ID do Evento"
+            value={eventoId}
+            onChange={(e) => setEventoId(e.target.value)}
+          />
+          <Input
+            placeholder="Preço (em ETH)"
+            value={preco}
+            onChange={(e) => setPreco(e.target.value)}
+          />
+          {tokenURI && (
+            <p className="text-sm text-green-700">
+              ✅ Ingresso comprado!{" "}
+              <a href={tokenURI} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
+                Ver QR Code
+              </a>
+            </p>
+          )}
+          <div className="flex flex-col gap-4">
+            <Button onClick={checarConvidado}>Verificar Convite</Button>
+            <Button onClick={handleComprarIngresso} disabled={loading}>
+              {loading ? "Processando..." : `Comprar Ingresso ${isGuest ? "(Convidado)" : "(Aberto)"}`}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
