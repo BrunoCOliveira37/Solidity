@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract VendaIngressosNFT is ERC721URIStorage, Ownable {
-    uint256 public proximoIdIngresso = 1;
+contract IngressoToken is ERC20, Ownable {
+    constructor() ERC20("IngressoToken", "ING") Ownable(msg.sender) {
+        _mint(msg.sender, 1_000_000 * 10 ** decimals());
+    }
+}
 
+contract VendaIngressos is Ownable {
     enum TipoVenda {
         Aberta,
         PorConvite
@@ -14,136 +18,109 @@ contract VendaIngressosNFT is ERC721URIStorage, Ownable {
 
     struct Evento {
         string nome;
-        address organizador;
-        uint256 preco;
+        uint256 precoEmReais;
         uint256 totalIngressos;
         uint256 vendidos;
         TipoVenda tipo;
+        uint256 dataEvento;
+        uint256 dataEncerramento;
+        address organizador;
         mapping(address => bool) convidados;
         mapping(address => uint256) revendedores;
     }
 
-    uint256 public proximoIdEvento = 1;
+    IERC20 public token;
+    uint256 public proximoIdEvento;
     mapping(uint256 => Evento) private eventos;
-    mapping(uint256 => uint256) public ingressoParaEvento;
-    mapping(uint256 => address) public donoOriginalIngresso;
 
-    event EventoCriado(uint256 idEvento, string nome, address organizador);
-    event IngressoComprado(uint256 idEvento, address comprador, uint256 tokenId);
-    event IngressosRepasados(uint256 idEvento, address para, uint256 quantidade);
-    event IngressoRevendido(uint256 tokenId, address de, address para);
-    event TokenURIDefinido(uint256 tokenId, string novaURI);
+    event EventoCriado(uint256 id, string nome, address organizador);
+    event IngressoComprado(uint256 idEvento, address comprador);
+    event IngressosRepassados(uint256 idEvento, address revendedor, uint256 qtd);
 
-    constructor() ERC721("IngressoNFT", "ING") Ownable(msg.sender) {}
+    constructor(address tokenAddress) {
+        token = IERC20(tokenAddress);
+    }
 
-    function criarEvento(string memory _nome, uint256 _preco, uint256 _totalIngressos, TipoVenda _tipo) external {
-        uint256 idEvento = proximoIdEvento;
-        Evento storage novo = eventos[idEvento];
-        novo.nome = _nome;
-        novo.organizador = msg.sender;
-        novo.preco = _preco;
-        novo.totalIngressos = _totalIngressos;
-        novo.tipo = _tipo;
+    function criarEvento(
+        string calldata nome,
+        uint256 precoEmReais,
+        uint256 totalIngressos,
+        TipoVenda tipo,
+        uint256 dataEvento,
+        uint256 dataEncerramento
+    ) external {
+        require(dataEncerramento < dataEvento, "Encerramento deve ser antes do evento");
 
+        Evento storage e = eventos[proximoIdEvento];
+        e.nome = nome;
+        e.precoEmReais = precoEmReais;
+        e.totalIngressos = totalIngressos;
+        e.tipo = tipo;
+        e.dataEvento = dataEvento;
+        e.dataEncerramento = dataEncerramento;
+        e.organizador = msg.sender;
+
+        emit EventoCriado(proximoIdEvento, nome, msg.sender);
         proximoIdEvento++;
-        emit EventoCriado(idEvento, _nome, msg.sender);
     }
 
-    function adicionarConvidado(uint256 _idEvento, address _convidado) external {
-        Evento storage evento = eventos[_idEvento];
-        require(msg.sender == evento.organizador, "Apenas o organizador pode convidar");
-        evento.convidados[_convidado] = true;
-    }
+    function comprarIngresso(uint256 idEvento) external {
+        Evento storage e = eventos[idEvento];
 
-    function estaConvidado(uint256 _idEvento, address _usuario) public view returns (bool) {
-        return eventos[_idEvento].convidados[_usuario];
-    }
+        require(block.timestamp < e.dataEncerramento, "Vendas encerradas");
+        require(e.vendidos < e.totalIngressos, "Ingressos esgotados");
 
-    function comprarIngresso(uint256 _idEvento) external payable {
-        Evento storage evento = eventos[_idEvento];
-
-        require(evento.organizador != address(0), "Evento inexistente");
-        require(evento.vendidos < evento.totalIngressos, "Ingressos esgotados");
-        require(msg.value == evento.preco, "Valor incorreto");
-
-        if (evento.tipo == TipoVenda.PorConvite) {
-            require(evento.convidados[msg.sender], "Voce nao esta na lista de convidados");
+        if (e.tipo == TipoVenda.PorConvite) {
+            require(e.convidados[msg.sender], "Nao esta na lista de convidados");
         }
 
-        uint256 tokenId = proximoIdIngresso;
-        _safeMint(msg.sender, tokenId);
+        // Transferência de token como pagamento
+        require(token.transferFrom(msg.sender, e.organizador, e.precoEmReais), "Falha no pagamento");
 
-        ingressoParaEvento[tokenId] = _idEvento;
-        donoOriginalIngresso[tokenId] = msg.sender;
-        evento.vendidos++;
-        proximoIdIngresso++;
-
-        emit IngressoComprado(_idEvento, msg.sender, tokenId);
+        e.vendidos++;
+        emit IngressoComprado(idEvento, msg.sender);
     }
 
-    function definirTokenURI(uint256 tokenId, string memory novaURI) external {
-        require(ownerOf(tokenId) == msg.sender || msg.sender == owner(), "Nao autorizado");
-        _setTokenURI(tokenId, novaURI);
-        emit TokenURIDefinido(tokenId, novaURI);
+    function repassarIngressos(uint256 idEvento, address revendedor, uint256 quantidade) external {
+        Evento storage e = eventos[idEvento];
+        require(msg.sender == e.organizador, "Apenas organizador");
+        require(e.vendidos + quantidade <= e.totalIngressos, "Excede total");
+        require(quantidade <= e.totalIngressos / 2, "Maximo 50% para revenda");
+
+        e.revendedores[revendedor] += quantidade;
+        e.vendidos += quantidade;
+
+        emit IngressosRepassados(idEvento, revendedor, quantidade);
     }
 
-    function revenderIngresso(uint256 tokenId, address para) external {
-        require(ownerOf(tokenId) == msg.sender, "Voce nao possui este ingresso");
-        _transfer(msg.sender, para, tokenId);
-        emit IngressoRevendido(tokenId, msg.sender, para);
+    function estaConvidado(uint256 idEvento, address usuario) external view returns (bool) {
+        return eventos[idEvento].convidados[usuario];
     }
 
-    function repassarIngressos(uint256 _idEvento, address para, uint256 quantidade) external {
-        Evento storage evento = eventos[_idEvento];
-        require(msg.sender == evento.organizador, "Apenas o organizador pode repassar");
-        require(evento.vendidos + quantidade <= evento.totalIngressos, "Nao ha ingressos suficientes");
-
-        evento.revendedores[para] += quantidade;
-        evento.vendidos += quantidade;
-
-        emit IngressosRepasados(_idEvento, para, quantidade);
-    }
-
-    function retirarRevendedor(uint256 _idEvento, address revendedor) external {
-        Evento storage evento = eventos[_idEvento];
-        require(msg.sender == evento.organizador, "Apenas o organizador pode remover");
-        evento.revendedores[revendedor] = 0;
-    }
-
-    function venderComoRevendedor(uint256 _idEvento) external {
-        Evento storage evento = eventos[_idEvento];
-        require(evento.revendedores[msg.sender] > 0, "Sem ingressos disponiveis para revenda");
-
-        uint256 tokenId = proximoIdIngresso;
-        _safeMint(msg.sender, tokenId);
-
-        ingressoParaEvento[tokenId] = _idEvento;
-        donoOriginalIngresso[tokenId] = msg.sender;
-        evento.revendedores[msg.sender]--;
-        proximoIdIngresso++;
-
-        emit IngressoComprado(_idEvento, msg.sender, tokenId);
-    }
-
-    function sacarFundos(uint256 _idEvento) external {
-        Evento storage evento = eventos[_idEvento];
-        require(msg.sender == evento.organizador, "Apenas o organizador pode sacar");
-        payable(evento.organizador).transfer(address(this).balance);
-    }
-
-    function obterDadosEvento(uint256 _idEvento)
+    function obterDadosEvento(uint256 idEvento)
         external
         view
         returns (
             string memory nome,
             address organizador,
-            uint256 preco,
+            uint256 precoEmReais,
             uint256 totalIngressos,
             uint256 vendidos,
-            TipoVenda tipo
+            TipoVenda tipo,
+            uint256 dataEvento,
+            uint256 dataEncerramento
         )
     {
-        Evento storage evento = eventos[_idEvento];
-        return (evento.nome, evento.organizador, evento.preco, evento.totalIngressos, evento.vendidos, evento.tipo);
+        Evento storage e = eventos[idEvento];
+        return (
+            e.nome,
+            e.organizador,
+            e.precoEmReais,
+            e.totalIngressos,
+            e.vendidos,
+            e.tipo,
+            e.dataEvento,
+            e.dataEncerramento
+        );
     }
 }
