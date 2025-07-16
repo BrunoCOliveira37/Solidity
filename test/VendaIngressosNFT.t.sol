@@ -49,6 +49,42 @@ contract VendaIngressosTest is Test {
         );
     }
 
+    function testSacarFundos() public {
+        // 1. Cria evento com encerramento ainda no futuro
+        uint256 agora = block.timestamp;
+        vm.prank(dono);
+        venda.criarEvento(
+            "Aberto",
+            100,
+            10,
+            VendaIngressos.TipoVenda.Aberta,
+            agora + 10, // evento começa em 10s
+            agora + 5 // encerramento em 5s
+        );
+
+        // 2. Compra ingresso
+        vm.startPrank(comprador);
+        token.approve(address(venda), 100);
+        venda.comprarIngresso(0);
+        vm.stopPrank();
+
+        // 3. Avança o tempo para DEPOIS do início do evento
+        vm.warp(agora + 15); // evento já começou
+
+        // 4. Realiza saque
+        uint256 saldoAntes = token.balanceOf(dono);
+        vm.prank(dono);
+        venda.sacarFundos(0);
+        uint256 saldoDepois = token.balanceOf(dono);
+
+        assertEq(saldoDepois, saldoAntes + 100);
+
+        // 5. Tenta sacar de novo e falha
+        vm.expectRevert(bytes("Fundos ja sacados"));
+        vm.prank(dono);
+        venda.sacarFundos(0);
+    }
+
     function testComprarIngressoAberto() public {
         vm.prank(dono);
         venda.criarEvento(

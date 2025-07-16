@@ -56,6 +56,8 @@ contract VendaIngressos is Ownable {
         uint256 dataEvento;
         uint256 dataEncerramento;
         address organizador;
+        bool sacado;
+        uint256 saldo;
         mapping(address => bool) convidados;
         mapping(address => uint256) revendedores;
     }
@@ -102,6 +104,21 @@ contract VendaIngressos is Ownable {
         proximoIdEvento++;
     }
 
+    function sacarFundos(uint256 idEvento) external {
+        Evento storage e = eventos[idEvento];
+        require(msg.sender == e.organizador, "Apenas o organizador pode sacar");
+        require(block.timestamp >= e.dataEvento, "Evento ainda nao aconteceu");
+        require(!e.sacado, "Fundos ja sacados");
+
+        uint256 valor = e.saldo;
+        require(valor > 0, "Sem saldo para sacar");
+
+        e.saldo = 0;
+        e.sacado = true;
+
+        require(token.transfer(e.organizador, valor), "Falha na transferencia");
+    }
+
     function comprarIngresso(uint256 idEvento) external {
         Evento storage e = eventos[idEvento];
 
@@ -112,7 +129,8 @@ contract VendaIngressos is Ownable {
             require(e.convidados[msg.sender], "Nao esta na lista de convidados");
         }
 
-        require(token.transferFrom(msg.sender, e.organizador, e.precoEmReais), "Falha no pagamento");
+        require(token.transferFrom(msg.sender, address(this), e.precoEmReais), "Falha no pagamento");
+        e.saldo += e.precoEmReais;
 
         e.vendidos++;
 

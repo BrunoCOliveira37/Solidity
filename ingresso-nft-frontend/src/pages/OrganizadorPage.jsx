@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { abi as vendaIngressosAbi } from "@/abi/VendaIngressos.json";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatEther } from "viem";
 
 const CONTRACT_ADDRESS_VENDA = import.meta.env.VITE_CONTRACT_ADDRESS_VENDA;
 
 export default function EventosOrganizador() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
+
   const [nome, setNome] = useState("");
   const [preco, setPreco] = useState("");
   const [total, setTotal] = useState("");

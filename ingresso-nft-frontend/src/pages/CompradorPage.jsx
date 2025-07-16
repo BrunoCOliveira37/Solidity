@@ -16,7 +16,7 @@ export default function CompradorPage() {
   const { writeContractAsync } = useWriteContract();
   const { data: walletClient } = useWalletClient();
   const [eventos, setEventos] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loadingId, setLoadingId] = useState(null);
 
   const client = createPublicClient({
     chain: foundry,
@@ -31,6 +31,8 @@ export default function CompradorPage() {
       functionName: "proximoIdEvento",
     });
 
+    const agora = Math.floor(Date.now() / 1000);
+
     for (let i = 0; i < Number(total); i++) {
       try {
         const evento = await client.readContract({
@@ -40,14 +42,22 @@ export default function CompradorPage() {
           args: [i],
         });
 
-        const isConvidado = evento[5] === 1 ? await client.readContract({
-          abi: vendaIngressosAbi,
-          address: CONTRACT_ADDRESS_VENDA,
-          functionName: "estaConvidado",
-          args: [i, address],
-        }) : true;
+        const tipo = Number(evento[5]);
+        const encerramento = Number(evento[7]);
 
-        if (isConvidado) {
+        const isConvidado =
+          tipo === 1
+            ? await client.readContract({
+                abi: vendaIngressosAbi,
+                address: CONTRACT_ADDRESS_VENDA,
+                functionName: "estaConvidado",
+                args: [i, address],
+              })
+            : true;
+
+        const naoEncerrado = encerramento > agora;
+
+        if (isConvidado && naoEncerrado) {
           eventosList.push({
             id: i,
             nome: evento[0],
@@ -55,7 +65,7 @@ export default function CompradorPage() {
             preco: evento[2],
             total: evento[3],
             vendidos: evento[4],
-            tipo: evento[5],
+            tipo: tipo,
             dataEvento: evento[6],
             dataEncerramento: evento[7],
           });
@@ -75,7 +85,7 @@ export default function CompradorPage() {
     try {
       if (!address || !walletClient) return alert("Conecte sua carteira");
 
-      setLoading(true);
+      setLoadingId(idEvento);
 
       await writeContractAsync({
         account: walletClient.account.address,
@@ -94,11 +104,12 @@ export default function CompradorPage() {
       });
 
       alert("Ingresso comprado com sucesso!");
+      fetchEventos(); // atualiza ingressos disponíveis
     } catch (err) {
       console.error(err);
       alert("Erro: " + (err.shortMessage || err.message));
     } finally {
-      setLoading(false);
+      setLoadingId(null);
     }
   };
 
@@ -116,11 +127,16 @@ export default function CompradorPage() {
               <h2 className="text-lg font-semibold">{evento.nome}</h2>
               <p>Preço: {formatUnits(evento.preco, 18)} ING</p>
               <p>Tipo: {evento.tipo === 0 ? "Aberto" : "Por Convite"}</p>
+              <p>
+                Disponíveis: {Number(evento.total) - Number(evento.vendidos)} / {Number(evento.total)}
+              </p>
               <Button
                 onClick={() => handleComprar(evento.id, evento.preco)}
-                disabled={loading || evento.vendidos >= evento.total}
+                disabled={
+                  loadingId === evento.id || Number(evento.vendidos) >= Number(evento.total)
+                }
               >
-                {loading ? "Processando..." : "Comprar"}
+                {loadingId === evento.id ? "Processando..." : "Comprar"}
               </Button>
             </CardContent>
           </Card>
