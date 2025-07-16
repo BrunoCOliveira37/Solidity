@@ -1,16 +1,47 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import "openzeppelin-contracts/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
+// --------------------- Ingresso NFT ---------------------
+contract IngressoNFT is ERC721URIStorage, Ownable {
+    uint256 public nextTokenId;
+
+    constructor() ERC721("IngressoNFT", "INGNFT") Ownable(msg.sender) {}
+
+    function mint(address to, string memory tokenURI) external onlyOwner returns (uint256) {
+        uint256 tokenId = nextTokenId;
+        _mint(to, tokenId);
+        _setTokenURI(tokenId, tokenURI);
+        nextTokenId++;
+        return tokenId;
+    }
+
+    function burn(uint256 tokenId) external {
+        require(_isApprovedOrOwnerCustom(msg.sender, tokenId), "Nao autorizado");
+        _burn(tokenId);
+    }
+
+    function _isApprovedOrOwnerCustom(address spender, uint256 tokenId) internal view returns (bool) {
+        address owner = ownerOf(tokenId);
+        return (spender == owner || getApproved(tokenId) == spender || isApprovedForAll(owner, spender));
+    }
+}
+
+// --------------------- Token ERC20 (ING) ---------------------
 contract IngressoToken is ERC20, Ownable {
     constructor() ERC20("IngressoToken", "ING") Ownable(msg.sender) {
         _mint(msg.sender, 1_000_000 * 10 ** decimals());
     }
 }
 
+// --------------------- Venda de Ingressos ---------------------
 contract VendaIngressos is Ownable {
+    using Strings for uint256;
+
     enum TipoVenda {
         Aberta,
         PorConvite
@@ -30,15 +61,22 @@ contract VendaIngressos is Ownable {
     }
 
     IERC20 public token;
+    IngressoNFT public ingressoNFT;
+
     uint256 public proximoIdEvento;
     mapping(uint256 => Evento) private eventos;
 
-    event EventoCriado(uint256 id, string nome, address organizador);
-    event IngressoComprado(uint256 idEvento, address comprador);
-    event IngressosRepassados(uint256 idEvento, address revendedor, uint256 qtd);
+    mapping(address => uint256[]) public ingressosPorUsuario;
+    mapping(uint256 => uint256) public eventoPorTokenId;
 
-    constructor(address tokenAddress) {
+    event EventoCriado(uint256 id, string nome, address organizador);
+    event IngressoComprado(uint256 idEvento, address comprador, uint256 tokenId);
+    event IngressosRepassados(uint256 idEvento, address revendedor, uint256 qtd);
+    event IngressoRevendido(address de, address para, uint256 tokenIdAntigo, uint256 tokenIdNovo);
+
+    constructor(address tokenAddress, address ingressoNFTAddress) Ownable(msg.sender) {
         token = IERC20(tokenAddress);
+        ingressoNFT = IngressoNFT(ingressoNFTAddress);
     }
 
     function criarEvento(
@@ -74,11 +112,25 @@ contract VendaIngressos is Ownable {
             require(e.convidados[msg.sender], "Nao esta na lista de convidados");
         }
 
-        // Transferência de token como pagamento
         require(token.transferFrom(msg.sender, e.organizador, e.precoEmReais), "Falha no pagamento");
 
         e.vendidos++;
-        emit IngressoComprado(idEvento, msg.sender);
+
+        string memory tokenURI = string(
+            abi.encodePacked("https://meusingressos.com/metadata/", idEvento.toString(), "/", e.vendidos.toString())
+        );
+
+        uint256 tokenId = ingressoNFT.mint(msg.sender, tokenURI);
+        ingressosPorUsuario[msg.sender].push(tokenId);
+        eventoPorTokenId[tokenId] = idEvento;
+
+        emit IngressoComprado(idEvento, msg.sender, tokenId);
+    }
+
+    function adicionarConvidado(uint256 idEvento, address convidado) external {
+        Evento storage e = eventos[idEvento];
+        require(msg.sender == e.organizador, "Apenas o organizador pode convidar");
+        e.convidados[convidado] = true;
     }
 
     function repassarIngressos(uint256 idEvento, address revendedor, uint256 quantidade) external {
@@ -91,6 +143,39 @@ contract VendaIngressos is Ownable {
         e.vendidos += quantidade;
 
         emit IngressosRepassados(idEvento, revendedor, quantidade);
+    }
+
+    function revenderIngresso(uint256 tokenId, address novoDono) external {
+        require(ingressoNFT.ownerOf(tokenId) == msg.sender, "Nao eh dono do ingresso");
+
+        uint256 idEvento = eventoPorTokenId[tokenId];
+
+        ingressoNFT.burn(tokenId);
+
+        string memory tokenURI = string(
+            abi.encodePacked(
+                "https://meusingressos.com/metadata/", idEvento.toString(), "/", block.timestamp.toString()
+            )
+        );
+
+        uint256 novoTokenId = ingressoNFT.mint(novoDono, tokenURI);
+        eventoPorTokenId[novoTokenId] = idEvento;
+
+        _removerIngresso(msg.sender, tokenId);
+        ingressosPorUsuario[novoDono].push(novoTokenId);
+
+        emit IngressoRevendido(msg.sender, novoDono, tokenId, novoTokenId);
+    }
+
+    function _removerIngresso(address usuario, uint256 tokenId) internal {
+        uint256[] storage lista = ingressosPorUsuario[usuario];
+        for (uint256 i = 0; i < lista.length; i++) {
+            if (lista[i] == tokenId) {
+                lista[i] = lista[lista.length - 1];
+                lista.pop();
+                break;
+            }
+        }
     }
 
     function estaConvidado(uint256 idEvento, address usuario) external view returns (bool) {
@@ -122,5 +207,9 @@ contract VendaIngressos is Ownable {
             e.dataEvento,
             e.dataEncerramento
         );
+    }
+
+    function ingressosDoUsuario(address usuario) external view returns (uint256[] memory) {
+        return ingressosPorUsuario[usuario];
     }
 }

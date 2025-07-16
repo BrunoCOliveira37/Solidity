@@ -1,137 +1,99 @@
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState } from "react";
+import { useAccount, useWriteContract } from "wagmi";
+import { abi as vendaIngressosAbi } from "@/abi/VendaIngressos.json";
 import { Button } from "@/components/ui/button";
-import { parseEther } from "viem";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { useWriteContract } from "wagmi";
-import { useAccount } from "wagmi";
-import {abi} from "@/abi/VendaIngressosNFT.json";
+import { formatEther } from "viem";
 
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
+const CONTRACT_ADDRESS_VENDA = import.meta.env.VITE_CONTRACT_ADDRESS_VENDA;
 
-export default function OrganizadorPage() {
+export default function EventosOrganizador() {
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
+  const [nome, setNome] = useState("");
+  const [preco, setPreco] = useState("");
+  const [total, setTotal] = useState("");
+  const [tipo, setTipo] = useState("0");
+  const [dataEvento, setDataEvento] = useState("");
+  const [dataEncerramento, setDataEncerramento] = useState("");
+  const [idEventoConvite, setIdEventoConvite] = useState("");
+  const [enderecoConvite, setEnderecoConvite] = useState("");
+  const [eventoValida, setEventoValida] = useState("");
+  const [tokenValida, setTokenValida] = useState("");
 
-  const [evento, setEvento] = useState({ nome: "", preco: "", total: "", tipo: "Aberta" });
-  const [convidado, setConvidado] = useState("");
-  const [eventoIdParaConvidado, setEventoIdParaConvidado] = useState("");
-  const [revendedor, setRevendedor] = useState("");
-  const [qtdRevendedor, setQtdRevendedor] = useState("");
-  const [eventoIdRepassar, setEventoIdRepassar] = useState("");
-  const [eventoIdSaque, setEventoIdSaque] = useState("");
-
-  const handleCriarEvento = async () => {
-    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
-    try {
-      await writeContractAsync({
-        abi,
-        address: CONTRACT_ADDRESS,
-        functionName: "criarEvento",
-        args: [
-          evento.nome,
-          parseEther(evento.preco),
-          BigInt(evento.total),
-          evento.tipo === "Aberta" ? 0 : 1,
-        ],
-      });
-      alert("Evento criado com sucesso!");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao criar evento");
-    }
+  const criarEvento = async () => {
+    await writeContractAsync({
+      address: CONTRACT_ADDRESS_VENDA,
+      abi: vendaIngressosAbi,
+      functionName: "criarEvento",
+      args: [
+        nome,
+        BigInt(preco),
+        BigInt(total),
+        parseInt(tipo),
+        BigInt(Math.floor(new Date(dataEvento).getTime() / 1000)),
+        BigInt(Math.floor(new Date(dataEncerramento).getTime() / 1000)),
+      ],
+    });
+    alert("Evento criado!");
   };
 
-  const handleAdicionarConvidado = async () => {
-    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
-    try {
-      await writeContractAsync({
-        abi,
-        address: CONTRACT_ADDRESS,
-        functionName: "adicionarConvidado",
-        args: [BigInt(eventoIdParaConvidado), convidado],
-      });
-      alert("Convidado adicionado com sucesso!");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao adicionar convidado");
-    }
+  const convidarPessoa = async () => {
+    await writeContractAsync({
+      address: CONTRACT_ADDRESS_VENDA,
+      abi: vendaIngressosAbi,
+      functionName: "adicionarConvidado",
+      args: [BigInt(idEventoConvite), enderecoConvite],
+    });
+    alert("Pessoa convidada!");
   };
 
-  const handleRepassarIngressos = async () => {
-    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
-    try {
-      await writeContractAsync({
-        abi,
-        address: CONTRACT_ADDRESS,
-        functionName: "repassarIngressos",
-        args: [BigInt(eventoIdRepassar), revendedor, BigInt(qtdRevendedor)],
-      });
-      alert("Ingressos repassados!");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao repassar ingressos");
-    }
+  const verificarIngresso = async () => {
+    const res = await fetch(`/api/validar?evento=${eventoValida}&token=${tokenValida}`);
+    const json = await res.json();
+    alert(json.valido ? "Ingresso válido!" : "Ingresso INVÁLIDO ou de outro evento.");
   };
 
-  const handleSaque = async () => {
-    if (!isConnected) return alert("Conecte sua carteira MetaMask primeiro.");
-    try {
-      await writeContractAsync({
-        abi,
-        address: CONTRACT_ADDRESS,
-        functionName: "sacarFundos",
-        args: [BigInt(eventoIdSaque)],
-      });
-      alert("Fundos sacados!");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao sacar fundos");
-    }
-  };
+  if (!isConnected) {
+    return <p className="text-center text-red-600 mt-10">Conecte sua carteira.</p>;
+  }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-10">
-      <h1 className="text-3xl font-bold text-center">Área do Organizador</h1>
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Gerenciar Eventos</h1>
 
       <Card>
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Criar Evento</h2>
-          <Input placeholder="Nome do Evento" value={evento.nome} onChange={e => setEvento({ ...evento, nome: e.target.value })} />
-          <Input placeholder="Preço (em ETH)" value={evento.preco} onChange={e => setEvento({ ...evento, preco: e.target.value })} />
-          <Input placeholder="Total de Ingressos" value={evento.total} onChange={e => setEvento({ ...evento, total: e.target.value })} />
-          <select value={evento.tipo} onChange={e => setEvento({ ...evento, tipo: e.target.value })} className="border rounded px-3 py-2">
-            <option value="Aberta">Aberta</option>
-            <option value="PorConvite">Por Convite</option>
+        <CardContent className="p-4 space-y-2">
+          <h2 className="font-semibold">Criar Evento</h2>
+          <Input placeholder="Nome do evento" onChange={(e) => setNome(e.target.value)} />
+          <Input placeholder="Preço (em wei)" onChange={(e) => setPreco(e.target.value)} />
+          <Input placeholder="Total de ingressos" onChange={(e) => setTotal(e.target.value)} />
+          <select onChange={(e) => setTipo(e.target.value)}>
+            <option value="0">Aberto</option>
+            <option value="1">Por convite</option>
           </select>
-          <Button onClick={handleCriarEvento}>Criar</Button>
+          <Input type="datetime-local" onChange={(e) => setDataEvento(e.target.value)} />
+          <Input type="datetime-local" onChange={(e) => setDataEncerramento(e.target.value)} />
+          <Button onClick={criarEvento}>Criar</Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Adicionar Convidado</h2>
-          <Input placeholder="ID do Evento" value={eventoIdParaConvidado} onChange={e => setEventoIdParaConvidado(e.target.value)} />
-          <Input placeholder="Endereço do Convidado" value={convidado} onChange={e => setConvidado(e.target.value)} />
-          <Button onClick={handleAdicionarConvidado}>Adicionar</Button>
+        <CardContent className="p-4 space-y-2">
+          <h2 className="font-semibold">Convidar Pessoa (Evento Privado)</h2>
+          <Input placeholder="ID do evento" onChange={(e) => setIdEventoConvite(e.target.value)} />
+          <Input placeholder="Endereço da carteira do convidado" onChange={(e) => setEnderecoConvite(e.target.value)} />
+          <Button onClick={convidarPessoa}>Convidar</Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Repassar Ingressos para Revendedor</h2>
-          <Input placeholder="ID do Evento" value={eventoIdRepassar} onChange={e => setEventoIdRepassar(e.target.value)} />
-          <Input placeholder="Endereço do Revendedor" value={revendedor} onChange={e => setRevendedor(e.target.value)} />
-          <Input placeholder="Quantidade" value={qtdRevendedor} onChange={e => setQtdRevendedor(e.target.value)} />
-          <Button onClick={handleRepassarIngressos}>Repassar</Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Sacar Fundos</h2>
-          <Input placeholder="ID do Evento" value={eventoIdSaque} onChange={e => setEventoIdSaque(e.target.value)} />
-          <Button onClick={handleSaque}>Sacar</Button>
+        <CardContent className="p-4 space-y-2">
+          <h2 className="font-semibold">Validar Ingresso NFT</h2>
+          <Input placeholder="ID do evento" onChange={(e) => setEventoValida(e.target.value)} />
+          <Input placeholder="Token ID do ingresso" onChange={(e) => setTokenValida(e.target.value)} />
+          <Button onClick={verificarIngresso}>Validar</Button>
         </CardContent>
       </Card>
     </div>

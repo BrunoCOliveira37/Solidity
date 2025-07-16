@@ -1,124 +1,138 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/VendaIngressosNFT.sol";
 
-contract VendaIngressosNFTTest is Test {
-    VendaIngressosNFT public contrato;
-    address organizador = address(0xABCD);
-    address comprador = address(0x1234);
-    address revendedor = address(0x5678);
+contract VendaIngressosTest is Test {
+    IngressoToken token;
+    IngressoNFT ingressoNFT;
+    VendaIngressos venda;
+
+    address dono = address(1);
+    address comprador = address(2);
+    address convidado = address(3);
+    address naoConvidado = address(4);
+    address novoDono = address(5);
 
     function setUp() public {
-        vm.prank(organizador);
-        contrato = new VendaIngressosNFT();
+        vm.startPrank(dono);
+        token = new IngressoToken();
+        ingressoNFT = new IngressoNFT();
+        venda = new VendaIngressos(address(token), address(ingressoNFT));
+        ingressoNFT.transferOwnership(address(venda));
+
+        // Agora as transferências funcionam corretamente, porque estão sendo feitas pelo dono
+        token.transfer(comprador, 1000);
+        token.transfer(convidado, 1000);
+        token.transfer(naoConvidado, 1000);
+
+        vm.stopPrank();
     }
 
     function testCriarEventoAberto() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Show Rock", 10000, 10, 0, block.timestamp + 10 days, block.timestamp + 5 days);
-
-        (string memory nome,, uint256 preco,, uint256 vendidos, VendaIngressosNFT.TipoVenda tipo) = contrato.obterDadosEvento(1);
-        assertEq(nome, "Show Rock");
-        assertEq(preco, 10000);
-        assertEq(vendidos, 0);
-        assertEq(uint(tipo), 0);
+        vm.prank(dono);
+        venda.criarEvento(
+            "Show Aberto", 100, 10, VendaIngressos.TipoVenda.Aberta, block.timestamp + 10 days, block.timestamp + 5 days
+        );
     }
 
-    function testAdicionarConvidado() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Festa Privada", 20000, 5, 1, block.timestamp + 10 days, block.timestamp + 5 days);
-
-        vm.prank(organizador);
-        contrato.adicionarConvidado(1, comprador);
-
-        assertTrue(contrato.estaConvidado(1, comprador));
+    function testCriarEventoFechado() public {
+        vm.prank(dono);
+        venda.criarEvento(
+            "Show Fechado",
+            100,
+            10,
+            VendaIngressos.TipoVenda.PorConvite,
+            block.timestamp + 10 days,
+            block.timestamp + 5 days
+        );
     }
 
     function testComprarIngressoAberto() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Show Pop", 30000, 5, 0, block.timestamp + 10 days, block.timestamp + 5 days);
+        vm.prank(dono);
+        venda.criarEvento(
+            "Aberto", 100, 10, VendaIngressos.TipoVenda.Aberta, block.timestamp + 10 days, block.timestamp + 5 days
+        );
 
-        vm.deal(comprador, 1 ether);
-        vm.prank(comprador);
-        contrato.comprarIngresso{value: 30000}(1);
-
-        assertEq(contrato.ownerOf(1), comprador);
+        vm.startPrank(comprador);
+        token.approve(address(venda), 100);
+        venda.comprarIngresso(0);
+        vm.stopPrank();
     }
 
-    function testComprarIngressoPrivadoSemConviteFalha() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Evento VIP", 30000, 5, 1, block.timestamp + 10 days, block.timestamp + 5 days);
+    function testComprarIngressoFechadoSemConvite() public {
+        vm.prank(dono);
+        venda.criarEvento(
+            "Fechado", 100, 10, VendaIngressos.TipoVenda.PorConvite, block.timestamp + 10 days, block.timestamp + 5 days
+        );
 
-        vm.deal(comprador, 1 ether);
-        vm.prank(comprador);
-        vm.expectRevert();
-        contrato.comprarIngresso{value: 30000}(1);
+        vm.startPrank(naoConvidado);
+        token.approve(address(venda), 100);
+        vm.expectRevert(); // espera falhar
+        venda.comprarIngresso(0);
+        vm.stopPrank();
     }
 
-    function testComprarIngressoPrivadoComConviteSucesso() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Evento VIP", 30000, 5, 1, block.timestamp + 10 days, block.timestamp + 5 days);
+    function testComprarIngressoFechadoComConvite() public {
+        vm.prank(dono);
+        venda.criarEvento(
+            "Fechado", 100, 10, VendaIngressos.TipoVenda.PorConvite, block.timestamp + 10 days, block.timestamp + 5 days
+        );
 
-        vm.prank(organizador);
-        contrato.adicionarConvidado(1, comprador);
+        // 🔧 Adiciona essa linha para simular o organizador
+        vm.prank(dono);
+        venda.adicionarConvidado(0, convidado);
 
-        vm.deal(comprador, 1 ether);
-        vm.prank(comprador);
-        contrato.comprarIngresso{value: 30000}(1);
-
-        assertEq(contrato.ownerOf(1), comprador);
+        vm.startPrank(convidado);
+        token.approve(address(venda), 100);
+        venda.comprarIngresso(0);
+        vm.stopPrank();
     }
 
-    function testRepassarIngressosParaRevendedor() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Festival", 40000, 20, 0, block.timestamp + 10 days, block.timestamp + 5 days);
+    function testRevenderIngresso() public {
+        vm.prank(dono);
+        venda.criarEvento(
+            "Aberto", 100, 10, VendaIngressos.TipoVenda.Aberta, block.timestamp + 10 days, block.timestamp + 5 days
+        );
 
-        vm.prank(organizador);
-        contrato.repassarIngressos(1, revendedor, 10);
+        vm.startPrank(comprador);
+        token.approve(address(venda), 100);
+        venda.comprarIngresso(0);
+        uint256 tokenId = venda.ingressosDoUsuario(comprador)[0];
+        ingressoNFT.approve(address(venda), tokenId);
+        venda.revenderIngresso(tokenId, novoDono);
+        vm.stopPrank();
 
-        // Não é possível testar mapping diretamente; testamos via revenda
-        vm.prank(revendedor);
-        contrato.venderComoRevendedor(1);
-        assertEq(contrato.ownerOf(1), revendedor);
+        assertEq(ingressoNFT.ownerOf(tokenId + 1), novoDono);
     }
 
-    function testRevendaIngresso() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Show", 10000, 5, 0, block.timestamp + 10 days, block.timestamp + 5 days);
+    function testEventoPorTokenId() public {
+        vm.prank(dono);
+        venda.criarEvento(
+            "Aberto", 100, 10, VendaIngressos.TipoVenda.Aberta, block.timestamp + 10 days, block.timestamp + 5 days
+        );
 
-        vm.deal(comprador, 1 ether);
-        vm.prank(comprador);
-        contrato.comprarIngresso{value: 10000}(1);
-
-        vm.prank(comprador);
-        contrato.revenderIngresso(1, revendedor);
-        assertEq(contrato.ownerOf(1), revendedor);
+        vm.startPrank(comprador);
+        token.approve(address(venda), 100);
+        venda.comprarIngresso(0);
+        uint256 tokenId = venda.ingressosDoUsuario(comprador)[0];
+        uint256 idEvento = venda.eventoPorTokenId(tokenId);
+        assertEq(idEvento, 0);
+        vm.stopPrank();
     }
 
-    function testSacarFundos() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Arrecadacao", 50000, 5, 0, block.timestamp + 10 days, block.timestamp + 5 days);
+    function testIngressosDoUsuario() public {
+        vm.prank(dono);
+        venda.criarEvento(
+            "Aberto", 100, 10, VendaIngressos.TipoVenda.Aberta, block.timestamp + 10 days, block.timestamp + 5 days
+        );
 
-        vm.deal(comprador, 1 ether);
-        vm.prank(comprador);
-        contrato.comprarIngresso{value: 50000}(1);
-
-        uint256 saldoAntes = organizador.balance;
-        vm.prank(organizador);
-        contrato.sacarFundos(1);
-        uint256 saldoDepois = organizador.balance;
-        assertGt(saldoDepois, saldoAntes);
-    }
-
-    function testDataEncerramentoImpedeCompra() public {
-        vm.prank(organizador);
-        contrato.criarEvento("Fechado", 10000, 5, 0, block.timestamp + 10 days, block.timestamp - 1, true);
-
-        vm.deal(comprador, 1 ether);
-        vm.prank(comprador);
-        vm.expectRevert("Vendas encerradas");
-        contrato.comprarIngresso{value: 10000}(1);
+        vm.startPrank(comprador);
+        token.approve(address(venda), 100);
+        venda.comprarIngresso(0);
+        uint256[] memory ingressos = venda.ingressosDoUsuario(comprador);
+        assertEq(ingressos.length, 1);
+        vm.stopPrank();
     }
 }

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'; // ðŸ‘
 import { injected } from '@wagmi/connectors';
 import HomePage from "./pages/HomePage";
 import OrganizadorPage from "./pages/OrganizadorPage";
+import IngressoPage from "./pages/IngressoPage"
 import CompradorPage from "./pages/CompradorPage";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Navbar from "./components/ui/navbar";
@@ -30,6 +31,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/organizador" element={<OrganizadorPage />} />
+                <Route path="/ingressos" element={<IngressoPage />} />
                 <Route path="/comprador" element={<CompradorPage />} />
               </Routes>
           </div>
